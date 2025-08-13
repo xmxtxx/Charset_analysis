@@ -22,7 +22,7 @@ data/
 ```
 
 - Top-level directory contains customer folders
-- Customer folders follow the pattern: `CustomerNR_Customer` (e.g., `7601002096300_customer1`)
+- Customer folders follow the pattern: `CustomerNR_Customer` (e.g., `0000000000000_customer1`)
 - CSV files are located in a `bak` subfolder within each customer folder
 
 ## 🚀 Quick Start
