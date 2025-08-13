@@ -89,6 +89,8 @@ class ProgressBar:
         else:
             time_str = "Calculating..."
 
+        total_time_str = f"Total elapsed Time: {format_time(elapsed)}"
+
         # Create progress bar
         bar = '█' * filled + '░' * (self.width - filled)
 
@@ -101,6 +103,7 @@ class ProgressBar:
         print(f'\r{Colors.CYAN}{self.title}:{Colors.NC} [{Colors.GREEN}{bar}{Colors.NC}] '
               f'{Colors.YELLOW}{self.current}/{self.total}{Colors.NC} '
               f'({progress*100:.1f}%) {Colors.DIM}{time_str}{Colors.NC} '
+              f'({progress*100:.1f}%) {Colors.DIM}{total_time_str}{Colors.NC} '
               f'{Colors.BLUE}{item_name}{Colors.NC}', end='', flush=True)
 
         if self.current == self.total:
@@ -319,7 +322,7 @@ def display_encoding_distribution(results: Dict, show_details: bool = False):
         print(f"  {Colors.BLUE}Total files{Colors.NC}: {results['total']}")
         print(f"  {Colors.BLUE}Folder path{Colors.NC}: {results['folder_path']}")
 
-def display_summary(all_results: List[Dict]):
+def display_summary(all_results: List[Dict], elapsed_time: float):
     """Display overall summary of all folders analyzed"""
     total_folders = len(all_results)
     total_files = sum(r['total'] for r in all_results)
@@ -339,23 +342,20 @@ def display_summary(all_results: List[Dict]):
     print(f"Total folders analyzed: {Colors.BLUE}{total_folders}{Colors.NC}")
     print(f"Total CSV files processed: {Colors.BLUE}{total_files}{Colors.NC}")
     print(f"Successfully detected: {Colors.GREEN}{total_detected}{Colors.NC}")
-
     if total_errors > 0:
         print(f"Total errors: {Colors.RED}{total_errors}{Colors.NC}")
 
-    # Success rate
     if total_files > 0:
         success_rate = (total_detected / total_files) * 100
         print(f"Detection success rate: {Colors.GREEN}{success_rate:.1f}%{Colors.NC}")
 
+    print(f"Total runtime: {Colors.MAGENTA}{format_time(elapsed_time)}{Colors.NC}")
+
     if all_encodings:
         print(f"\n{Colors.BOLD}{Colors.CYAN}Overall Encoding Distribution:{Colors.NC}")
         sorted_encodings = sorted(all_encodings.items(), key=lambda x: x[1], reverse=True)
-
         for encoding, count in sorted_encodings:
             percentage = (count / total_detected) * 100 if total_detected > 0 else 0
-
-            # Color based on encoding type
             if encoding.lower() in ['utf-8', 'utf8']:
                 enc_color = Colors.GREEN
             elif encoding.lower() in ['ascii']:
@@ -364,10 +364,10 @@ def display_summary(all_results: List[Dict]):
                 enc_color = Colors.YELLOW
             else:
                 enc_color = Colors.MAGENTA
-
             print(f"  {enc_color}{encoding}{Colors.NC}: {count} files ({percentage:.1f}%)")
 
 def main():
+    start_time = time.time()
     parser = argparse.ArgumentParser(
         description='Detect character encoding of CSV files in structured folders with progress tracking',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -467,7 +467,8 @@ Examples:
             print()  # Empty line between folders
 
     # Display summary
-    display_summary(all_results)
+    elapsed_time = time.time() - start_time
+    display_summary(all_results, elapsed_time)
 
     print(f"\n{Colors.GREEN}✅ Analysis complete!{Colors.NC}")
 
