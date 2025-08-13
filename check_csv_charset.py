@@ -48,6 +48,17 @@ try:
 except ImportError:
     install_chardet_message()
 
+
+def format_time(seconds: float) -> str:
+    """Format seconds into human-readable time"""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds/60)}m {int(seconds%60)}s"
+    else:
+        return f"{int(seconds/3600)}h {int((seconds%3600)/60)}m"
+
+
 class ProgressBar:
     """Simple progress bar for terminal output"""
 
@@ -74,7 +85,7 @@ class ProgressBar:
         if self.current > 0:
             avg_time = elapsed / self.current
             remaining = avg_time * (self.total - self.current)
-            time_str = f"ETA: {self.format_time(remaining)}"
+            time_str = f"ETA: {format_time(remaining)}"
         else:
             time_str = "Calculating..."
 
@@ -94,15 +105,6 @@ class ProgressBar:
 
         if self.current == self.total:
             print()  # New line when complete
-
-    def format_time(self, seconds: float) -> str:
-        """Format seconds into human-readable time"""
-        if seconds < 60:
-            return f"{int(seconds)}s"
-        elif seconds < 3600:
-            return f"{int(seconds/60)}m {int(seconds%60)}s"
-        else:
-            return f"{int(seconds/3600)}h {int((seconds%3600)/60)}m"
 
     def finish(self):
         """Mark progress as complete"""
