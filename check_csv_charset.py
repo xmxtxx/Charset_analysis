@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 from collections import defaultdict
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Color codes for terminal output
 class Colors:
@@ -35,18 +36,21 @@ class Colors:
     DIM = '\033[2m'
 
 def install_chardet_message():
-    """Display installation instructions for chardet"""
-    print(f"{Colors.RED}Error: 'chardet' library is not installed{Colors.NC}")
-    print(f"{Colors.YELLOW}Install it using one of these commands:{Colors.NC}")
-    print(f"  pip3 install chardet")
-    print(f"  python3 -m pip install chardet")
-    print(f"  sudo apt-get install python3-chardet  (for system-wide installation)")
+    """Display installation instructions for an encoding detector"""
+    print(f"{Colors.RED}Error: No encoding detector found{Colors.NC}")
+    print(f"{Colors.YELLOW}Install one of these:{Colors.NC}")
+    print(f"  pip3 install cchardet   # fastest (optional)")
+    print(f"  pip3 install chardet    # default")
     sys.exit(1)
 
+# Try fast detector first, fallback to chardet
 try:
-    import chardet
+    import cchardet as chardet
 except ImportError:
-    install_chardet_message()
+    try:
+        import chardet
+    except ImportError:
+        install_chardet_message()
 
 
 def format_time(seconds: float) -> str:
@@ -89,7 +93,7 @@ class ProgressBar:
         else:
             time_str = "Calculating..."
 
-        total_time_str = f"Total elapsed Time: {format_time(elapsed)}"
+        total_time_str = f"Elapsed: {format_time(elapsed)}"
 
         # Create progress bar
         bar = '█' * filled + '░' * (self.width - filled)
@@ -100,11 +104,16 @@ class ProgressBar:
             item_name = item_name[:max_item_len-3] + "..."
 
         # Print progress bar
-        print(f'\r{Colors.CYAN}{self.title}:{Colors.NC} [{Colors.GREEN}{bar}{Colors.NC}] '
-              f'{Colors.YELLOW}{self.current}/{self.total}{Colors.NC} '
-              f'({progress*100:.1f}%) {Colors.DIM}{time_str}{Colors.NC} '
-              f'({progress*100:.1f}%) {Colors.DIM}{total_time_str}{Colors.NC} '
-              f'{Colors.BLUE}{item_name}{Colors.NC}', end='', flush=True)
+        print(
+            f'\r{Colors.CYAN}{self.title}:{Colors.NC} '
+            f'[{Colors.GREEN}{bar}{Colors.NC}] '
+            f'{Colors.YELLOW}{self.current}/{self.total}{Colors.NC} '
+            f'({progress*100:.1f}%) {Colors.DIM}{time_str}{Colors.NC} '
+            f'{Colors.DIM}{total_time_str}{Colors.NC} '
+            f'{Colors.BLUE}{item_name}{Colors.NC}',
+            end='',
+            flush=True
+        )
 
         if self.current == self.total:
             print()  # New line when complete
@@ -113,35 +122,61 @@ class ProgressBar:
         """Mark progress as complete"""
         self.update(self.total, "Complete!")
 
-def detect_encoding(file_path: Path, sample_size: int = 65536) -> Tuple[str, float]:
+
+def detect_encoding(file_path: Path,
+                    sample_size: int = 65536,
+                    do_second_pass: bool = True,
+                    second_pass_factor: int = 4,
+                    min_confidence_first_pass: float = 0.70) -> Tuple[str, float]:
     """
-    Detect the character encoding of a file
+    Detect the character encoding of a file with minimal I/O.
 
-    Args:
-        file_path: Path to the file
-        sample_size: Number of bytes to read for detection (default: 64KB)
-
-    Returns:
-        Tuple of (encoding_name, confidence_percentage)
+    Strategy:
+    1) Read head sample (sample_size) → detect
+    2) If low confidence, read tail sample (sample_size) and detect on head+tail
+    3) If still low and allowed, second pass with larger read (sample_size * factor)
     """
     try:
-        with open(file_path, 'rb') as file:
-            # Read sample of file for detection
-            raw_data = file.read(sample_size)
+        fsize = os.path.getsize(file_path)
+        if fsize == 0:
+            return "unknown", 0.0
 
-            # Detect encoding
-            result = chardet.detect(raw_data)
+        with open(file_path, 'rb') as f:
+            # Head sample
+            head = f.read(sample_size)
+            result = chardet.detect(head)
+            encoding = result.get('encoding', 'unknown') or 'unknown'
+            confidence = float(result.get('confidence') or 0.0)
 
-            # If confidence is low, try reading more of the file
-            if result['confidence'] < 0.7 and os.path.getsize(file_path) > sample_size:
-                file.seek(0)
-                raw_data = file.read(sample_size * 4)  # Read 256KB
-                result = chardet.detect(raw_data)
+            if confidence >= min_confidence_first_pass or fsize <= sample_size:
+                return encoding, confidence * 100.0
 
-            encoding = result.get('encoding', 'unknown')
-            confidence = result.get('confidence', 0.0) * 100
+            # Tail sample (avoid reading the whole file)
+            if fsize > sample_size:
+                try:
+                    f.seek(max(0, fsize - sample_size))
+                    tail = f.read(sample_size)
+                    combined = head + tail
+                    result2 = chardet.detect(combined)
+                    enc2 = result2.get('encoding', 'unknown') or 'unknown'
+                    conf2 = float(result2.get('confidence') or 0.0)
+                    if conf2 >= min_confidence_first_pass:
+                        return enc2, conf2 * 100.0
+                    encoding, confidence = enc2, conf2
+                except Exception:
+                    # Fall through to second pass if needed
+                    pass
 
-            return encoding, confidence
+            # Second pass (bigger sample)
+            if do_second_pass and fsize > sample_size:
+                f.seek(0)
+                big = f.read(min(fsize, sample_size * second_pass_factor))
+                result3 = chardet.detect(big)
+                enc3 = result3.get('encoding', 'unknown') or 'unknown'
+                conf3 = float(result3.get('confidence') or 0.0)
+                return enc3, conf3 * 100.0
+
+            return encoding, confidence * 100.0
 
     except Exception as e:
         return f"error: {str(e)}", 0.0
@@ -182,20 +217,26 @@ def count_total_csv_files(top_directory: Path, pattern: str = None, bak_folder: 
 
     return total_files, folders_with_csv
 
+def _detect_one(args_tuple):
+    """
+    Helper for multiprocessing (must be top-level to be pickleable).
+    """
+    file_path, folder_path, folder_display_name, sample_size, do_second_pass = args_tuple
+    enc, conf = detect_encoding(
+        file_path=file_path,
+        sample_size=sample_size,
+        do_second_pass=do_second_pass,
+        second_pass_factor=4,
+        min_confidence_first_pass=0.70
+    )
+    return file_path, enc, conf, folder_path, folder_display_name
+
 def analyze_subfolder_csv_files(subfolder: Path, bak_folder_name: str = 'bak',
                                 progress_bar: Optional[ProgressBar] = None,
                                 file_offset: int = 0) -> Dict:
     """
+    (Unused in parallel mode, kept for compatibility or potential fallback)
     Analyze CSV files in a specific subfolder's bak directory
-
-    Args:
-        subfolder: Path to subfolder
-        bak_folder_name: Name of the backup folder (default: 'bak')
-        progress_bar: Optional progress bar to update
-        file_offset: Current file count offset for progress bar
-
-    Returns:
-        Dictionary with analysis results for this subfolder
     """
     results = {
         'folder_path': subfolder,
@@ -207,34 +248,22 @@ def analyze_subfolder_csv_files(subfolder: Path, bak_folder_name: str = 'bak',
         'errors': 0
     }
 
-    # Check if bak folder exists
     bak_path = subfolder / bak_folder_name
     if not bak_path.exists() or not bak_path.is_dir():
         return results
 
-    # Find CSV files in bak folder
     csv_files = list(bak_path.glob('*.csv')) + list(bak_path.glob('*.CSV'))
     results['total'] = len(csv_files)
 
-    # Analyze each file
     for idx, csv_file in enumerate(sorted(csv_files)):
-        # Update progress bar
         if progress_bar:
             current_file = file_offset + idx + 1
             progress_bar.update(current_file, f"{results['folder_name']}/{csv_file.name}")
 
         encoding, confidence = detect_encoding(csv_file)
+        results['files'].append({'path': csv_file, 'name': csv_file.name, 'encoding': encoding, 'confidence': confidence})
 
-        file_info = {
-            'path': csv_file,
-            'name': csv_file.name,
-            'encoding': encoding,
-            'confidence': confidence
-        }
-
-        results['files'].append(file_info)
-
-        if encoding and not encoding.startswith('error'):
+        if encoding and not str(encoding).startswith('error'):
             results['detected'] += 1
             results['encodings'][encoding] += 1
         else:
@@ -242,23 +271,15 @@ def analyze_subfolder_csv_files(subfolder: Path, bak_folder_name: str = 'bak',
 
     return results
 
+
 def analyze_all_subfolders(top_directory: Path, pattern: str = None, bak_folder: str = 'bak',
-                           show_progress: bool = True) -> List[Dict]:
+                           show_progress: bool = True, jobs: Optional[int] = None,
+                           fast: bool = False, sample_size: int = 65536) -> List[Dict]:
     """
-    Analyze all subfolders in the top directory with progress bar
-
-    Args:
-        top_directory: Path to top-level directory
-        pattern: Optional pattern to filter folders
-        bak_folder: Name of the backup folder (default: 'bak')
-        show_progress: Whether to show progress bar
-
-    Returns:
-        List of analysis results for each subfolder
+    Analyze all subfolders in parallel with a progress bar.
     """
-    all_results = []
+    all_results: List[Dict] = []
 
-    # First, count total files and get folders to process
     print(f"{Colors.CYAN}Scanning folders...{Colors.NC}")
     total_files, folders_with_csv = count_total_csv_files(top_directory, pattern, bak_folder)
 
@@ -267,24 +288,75 @@ def analyze_all_subfolders(top_directory: Path, pattern: str = None, bak_folder:
 
     print(f"{Colors.GREEN}Found {total_files} CSV files in {len(folders_with_csv)} folders{Colors.NC}\n")
 
-    # Create progress bar
-    progress_bar = None
-    if show_progress:
-        progress_bar = ProgressBar(total_files, title="Processing CSV files")
+    # Prepare per-folder result skeletons and tasks
+    folder_result_map: Dict[Path, Dict] = {}
+    tasks = []
 
-    # Analyze each subfolder
-    file_offset = 0
     for subfolder in folders_with_csv:
-        results = analyze_subfolder_csv_files(subfolder, bak_folder, progress_bar, file_offset)
-        if results['total'] > 0:
-            all_results.append(results)
-            file_offset += results['total']
+        res = {
+            'folder_path': subfolder,
+            'folder_name': get_folder_name(subfolder),
+            'files': [],
+            'encodings': defaultdict(int),
+            'total': 0,
+            'detected': 0,
+            'errors': 0
+        }
+        folder_result_map[subfolder] = res
+
+        bak_path = subfolder / bak_folder
+        csv_files = list(bak_path.glob('*.csv')) + list(bak_path.glob('*.CSV'))
+        res['total'] = len(csv_files)
+        for f in csv_files:
+            tasks.append((f, subfolder, res['folder_name'], sample_size, not fast))
+
+    progress_bar = ProgressBar(total_files, title="Processing CSV files") if show_progress else None
+
+    processed = 0
+    # Decide worker count with hard-cap + info
+    cpu = os.cpu_count() or 1
+    requested = jobs if (jobs and jobs > 0) else cpu
+    # Cap to 2x CPU and also to number of files (no point in more workers than files)
+    capped = min(requested, cpu * 2, total_files)
+
+    if capped < requested:
+        print(
+            f"{Colors.YELLOW}ℹ Limiting jobs from {requested} to {capped} "
+            f"(CPU={cpu}, files={total_files}) for stability{Colors.NC}"
+        )
+
+    max_workers = max(1, capped)
+
+    with ProcessPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_detect_one, t) for t in tasks]
+        for fut in as_completed(futures):
+            file_path, encoding, confidence, folder_path, folder_display_name = fut.result()
+            res = folder_result_map[folder_path]
+
+            res['files'].append({
+                'path': file_path,
+                'name': file_path.name,
+                'encoding': encoding,
+                'confidence': confidence
+            })
+
+            if encoding and not str(encoding).startswith('error'):
+                res['detected'] += 1
+                res['encodings'][encoding] += 1
+            else:
+                res['errors'] += 1
+
+            processed += 1
+            if progress_bar:
+                progress_bar.update(processed, f"{folder_display_name}/{file_path.name}")
 
     if progress_bar:
         progress_bar.finish()
         print()  # Extra line after progress bar
 
-    return all_results
+    # Preserve original folder order
+    return [folder_result_map[f] for f in folders_with_csv if folder_result_map[f]['total'] > 0]
+
 
 def display_encoding_distribution(results: Dict, show_details: bool = False):
     """Display encoding distribution for a single folder"""
@@ -304,11 +376,11 @@ def display_encoding_distribution(results: Dict, show_details: bool = False):
         percentage = (count / total) * 100
 
         # Color based on encoding type
-        if encoding.lower() in ['utf-8', 'utf8']:
+        if encoding and encoding.lower() in ['utf-8', 'utf8']:
             enc_color = Colors.GREEN
-        elif encoding.lower() in ['ascii']:
+        elif encoding and encoding.lower() in ['ascii']:
             enc_color = Colors.BLUE
-        elif 'iso' in encoding.lower() or 'windows' in encoding.lower():
+        elif encoding and ('iso' in encoding.lower() or 'windows' in encoding.lower()):
             enc_color = Colors.YELLOW
         else:
             enc_color = Colors.MAGENTA
@@ -356,11 +428,11 @@ def display_summary(all_results: List[Dict], elapsed_time: float):
         sorted_encodings = sorted(all_encodings.items(), key=lambda x: x[1], reverse=True)
         for encoding, count in sorted_encodings:
             percentage = (count / total_detected) * 100 if total_detected > 0 else 0
-            if encoding.lower() in ['utf-8', 'utf8']:
+            if encoding and encoding.lower() in ['utf-8', 'utf8']:
                 enc_color = Colors.GREEN
-            elif encoding.lower() in ['ascii']:
+            elif encoding and encoding.lower() in ['ascii']:
                 enc_color = Colors.BLUE
-            elif 'iso' in encoding.lower() or 'windows' in encoding.lower():
+            elif encoding and ('iso' in encoding.lower() or 'windows' in encoding.lower()):
                 enc_color = Colors.YELLOW
             else:
                 enc_color = Colors.MAGENTA
@@ -386,9 +458,12 @@ Examples:
   %(prog)s data                 # Analyze all subfolders in 'data'
   %(prog)s /path/to/data        # Analyze specific directory
   %(prog)s data --bak backup    # Use 'backup' instead of 'bak' folder
-  %(prog)s data -d               # Show detailed output
-  %(prog)s data -s               # Show only summary
+  %(prog)s data -d              # Show detailed output
+  %(prog)s data -s              # Show only summary
   %(prog)s data --no-progress   # Disable progress bar
+  %(prog)s data -j 8            # Use 8 parallel workers
+  %(prog)s data --fast          # Faster single-pass detection
+  %(prog)s data --sample-size 131072  # Larger sample
         """
     )
 
@@ -430,6 +505,26 @@ Examples:
         help='Disable progress bar'
     )
 
+    parser.add_argument(
+        '-j', '--jobs',
+        type=int,
+        default=os.cpu_count(),
+        help='Number of parallel workers (default: CPU count)'
+    )
+
+    parser.add_argument(
+        '--fast',
+        action='store_true',
+        help='Faster single-pass detection (lower I/O, slightly lower confidence)'
+    )
+
+    parser.add_argument(
+        '--sample-size',
+        type=int,
+        default=65536,
+        help='Bytes to sample per pass (default: 65536)'
+    )
+
     args = parser.parse_args()
 
     # Validate directory
@@ -450,9 +545,17 @@ Examples:
     print(f"📂 CSV location: {Colors.GREEN}*/{args.bak}/*.csv{Colors.NC}")
     print(f"{Colors.BLUE}{'─' * 60}{Colors.NC}\n")
 
-    # Analyze all subfolders
+    # Analyze all subfolders (parallel)
     pattern = None if args.pattern == 'all' else args.pattern
-    all_results = analyze_all_subfolders(directory, pattern, args.bak, not args.no_progress)
+    all_results = analyze_all_subfolders(
+        top_directory=directory,
+        pattern=pattern,
+        bak_folder=args.bak,
+        show_progress=not args.no_progress,
+        jobs=args.jobs,
+        fast=args.fast,
+        sample_size=args.sample_size
+    )
 
     if not all_results:
         print(f"{Colors.YELLOW}⚠️  No CSV files found in any subfolder's '{args.bak}' directory{Colors.NC}")
