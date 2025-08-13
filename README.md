@@ -1,104 +1,157 @@
-# CSV Character Encoding Detection Tool
+# CSV Character Encoding Detection & Conversion Tool
 
-Detect and analyze character encodings of CSV files across many folders — **fast**, **parallel**, and **fully offline**. Dynamic folder discovery, half-core default for stability, and graceful **Ctrl+C**.
+Detect, analyze, and **convert** character encodings of CSV files across many folders — **fast**, **parallel**, and **fully offline**. Now with encoding conversion and rollback support!
 
 ---
 
 ## 🎯 What it does
 
-* Recursively scans CSV files under each immediate subfolder of a top directory (**no fixed naming required**).
-* Detects encoding (UTF-8/UTF-8-SIG, ASCII, ISO-8859-\*, Windows-125x, plus UTF-16/UTF-32 via BOM and heuristics).
-* Per-folder breakdowns and an overall summary with success rate.
-* **Offline only**: never touches the network; read-only.
+* **Detects** encoding of CSV files (UTF-8, ISO-8859-*, Windows-125x, UTF-16/32, ASCII)
+* **Converts** files between encodings with automatic backup
+* **Rollback** feature to undo conversions using backup files
+* Parallel processing with smart job management
+* Per-folder and overall statistics with success rates
+* **100% offline** - no network calls, read-only by default
 
 ---
 
-## 📁 Folder structure (flexible)
+## ✨ New Features
+
+### 🔄 **Encoding Conversion**
+Convert your CSV files to a standard encoding with safety features:
+- Automatic `.bak` backup creation
+- Dry-run mode to preview changes
+- Filter by source encoding
+- Detailed conversion reports
+
+### ↩️ **Rollback Support**
+Made a mistake? Instantly restore from backups:
+```bash
+python3 check_csv_charset.py /path/to/data --rollback
+```
+
+---
+
+## 📁 Flexible Folder Structure
 
 ```
 top/
 ├── AnyFolder1/
-│   └── ... (CSV files can be anywhere if --csv-mode any)
+│   └── ... (CSV files anywhere if --csv-mode any)
 ├── AnyFolder2/
-│   └── <csv_dir>/ (if --csv-mode subdir, e.g., "bak" or "archive")
+│   └── <csv_dir>/ (if --csv-mode subdir, e.g., "bak")
 │       └── *.csv
 └── ...
 ```
 
-You choose where CSVs live:
-
-* `--csv-mode any` *(default)*: search `**/*.csv` anywhere under each subfolder
-* `--csv-mode subdir`: only search inside a specific subfolder (set with `--bak`)
-
 ---
 
-## 🚀 Quick start
+## 🚀 Quick Start
 
+### Installation
 ```bash
-# 1) Install an encoding detector (choose one)
-pip3 install chardet
-# or (optional, often faster)
-pip3 install cchardet
+# Install an encoding detector (choose one)
+pip3 install chardet      # standard
+pip3 install cchardet     # faster (optional)
+```
 
-# 2) Run on current directory (uses half your CPU cores by default)
+### Basic Usage
+```bash
+# Detect encodings in current directory
 python3 check_csv_charset.py
 
-# 3) Run on a specific top directory (e.g., ~/data)
+# Detect in specific directory
 python3 check_csv_charset.py ~/data
 
-# 4) Only look in a named subfolder under each folder (e.g., "archive")
-python3 check_csv_charset.py /path/to/top --csv-mode subdir --bak archive
+# Convert all files to UTF-8 (with preview)
+python3 check_csv_charset.py ~/data --convert-to utf-8 --dry-run
+
+# Actually convert files
+python3 check_csv_charset.py ~/data --convert-to utf-8
+
+# Rollback if something went wrong
+python3 check_csv_charset.py ~/data --rollback
 ```
 
 ---
 
-## 🧩 Features
+## 🛠️ Command Options
 
-* **Dynamic CSV discovery**: `--csv-mode any` (recursive) or `--csv-mode subdir` (e.g., only in `bak`)
-* **Parallel processing**: default **half** your CPU cores (can override with `-j`)
-* **Job safety**: caps extreme `-j` values to avoid thrashing and respects file count
-* **Real-time progress**: progress bar with ETA and elapsed time
-* **Heuristics**: BOM detection (UTF-8/16/32 LE/BE), small UTF-16 no-BOM detection, ASCII/binary hinting
-* **Graceful Ctrl+C**: prints a friendly message and stops cleanly
-* **Display naming**: extract readable names from folder prefixes (configurable delimiters)
+### Core Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `directory` | Top directory to scan | `.` |
+| `--csv-mode {any,subdir}` | Where to look for CSVs | `any` |
+| `--bak <name>` | Subfolder name when using subdir mode | `bak` |
+| `-j, --jobs <n>` | Parallel workers | half cores |
+| `--fast` | Single-pass detection (less I/O) | off |
+| `--sample-size <bytes>` | Bytes to sample per pass | `65536` |
 
----
+### Display Options
+| Option | Description |
+|--------|-------------|
+| `-d, --details` | Show detailed folder information |
+| `-s, --summary-only` | Only show overall summary |
+| `--no-progress` | Disable progress bar |
+| `--pattern {all,underscore}` | Filter folders by name pattern |
+| `--name-delims "<chars>"` | Characters for display name extraction |
 
-## 🛠️ Options
-
-| Option                       | Description                                                 | Default        |
-| ---------------------------- | ----------------------------------------------------------- | -------------- |
-| `directory`                  | Top directory containing subfolders                         | `.`            |
-| `--csv-mode {any,subdir}`    | Where to look for CSVs                                      | `any`          |
-| `--bak <name>`               | Subfolder name when `--csv-mode subdir`                     | `bak`          |
-| `-j, --jobs <n>`             | Parallel workers; auto-capped for stability                 | **half cores** |
-| `--fast`                     | Single-pass detection (less I/O, slightly lower confidence) | off            |
-| `--sample-size <bytes>`      | Bytes sampled per pass                                      | `65536`        |
-| `--pattern {all,underscore}` | Filter subfolders by name                                   | `all`          |
-| `--name-delims "<chars>"`    | Delimiters for display names; fallback = full name          | `_- `          |
-| `-d, --details`              | Show more info per folder                                   | off            |
-| `-s, --summary-only`         | Only overall summary                                        | off            |
-| `--no-progress`              | Disable progress bar                                        | off            |
-
-> **Job safety:** Even if you pass `-j 100`, the tool caps to `min(requested, 2×CPU, total_files)` and prints an info line.
-
----
-
-## 🧠 Display naming
-
-Folder names like `000123_CustomerA` or `42-CorpX` are shown as `CustomerA` or `CorpX`.
-Customize delimiters with `--name-delims "_- "`. If no delimiter is found, the **full folder name** is used.
+### 🔄 Conversion Options
+| Option | Description |
+|--------|-------------|
+| `--convert-to {encoding}` | Target encoding (utf-8, utf-8-sig, ascii, iso-8859-1, windows-1252) |
+| `--dry-run` | Preview changes without modifying files |
+| `--no-backup` | Skip creating .bak files (dangerous!) |
+| `--convert-filter <encoding>` | Only convert files with specific source encoding |
+| `--rollback` | Restore all .bak files to original |
 
 ---
 
-## ⌨️ Graceful interrupt
+## 📊 Example Workflows
 
-Press **Ctrl+C** any time:
-You’ll see a message like **“↩ Ctrl+C detected. Shutting down gracefully…”**, remaining tasks are canceled (best-effort), and the tool exits cleanly.
+### 1. Analyze and Fix Mixed Encodings
+```bash
+# First, see what you're dealing with
+python3 check_csv_charset.py /data/customers
+
+# Preview conversion of ISO-8859-1 files only
+python3 check_csv_charset.py /data/customers \
+    --convert-to utf-8 \
+    --convert-filter iso-8859-1 \
+    --dry-run
+
+# Do the actual conversion
+python3 check_csv_charset.py /data/customers \
+    --convert-to utf-8 \
+    --convert-filter iso-8859-1
+
+# If something went wrong, rollback
+python3 check_csv_charset.py /data/customers --rollback
+```
+
+### 2. Fast Scan of Large Dataset
+```bash
+# Use more cores and fast mode for quick overview
+python3 check_csv_charset.py /bigdata \
+    --fast \
+    -j 16 \
+    --summary-only
+```
+
+### 3. Convert Everything to UTF-8
+```bash
+# Safely convert all CSV files
+python3 check_csv_charset.py /project \
+    --convert-to utf-8 \
+    --dry-run  # Always preview first!
+
+# If happy with preview, run conversion
+python3 check_csv_charset.py /project --convert-to utf-8
+```
 
 ---
 
-## 📊 Example output
+## 🎨 Output Example
 
 ```
 ============================================================
@@ -108,48 +161,61 @@ CSV Character Encoding Detection
 🔎 CSV search: **/*.csv (recursive under each subfolder)
 ────────────────────────────────────────────────────────────
 
-Scanning folders...
-Found 24,236 CSV files in 32 folders
-ℹ Limiting jobs from 32 to 32 (CPU=64, files=24236) for stability
-
-Processing CSV files: [████████████████████████████████████████████████] 24236/24236 (100.0%) ETA: 0s Elapsed: 41s Complete!
+Processing CSV files: [████████████] 1250/1250 (100.0%)
 
 Encoding Distribution CustomerA:
   UTF-8: 120 files (80.0%)
   ISO-8859-1: 30 files (20.0%)
 
-…
+────────────────────────────────────────────────────────────
+Starting Encoding Conversion to utf-8
+Creating .bak backups for all converted files
+────────────────────────────────────────────────────────────
+
+Converting in CustomerA...
+  ✓ data_001.csv: iso-8859-1 → utf-8
+  ✓ data_002.csv: iso-8859-1 → utf-8
+  [SKIP] data_003.csv - already utf-8
 
 ══════════════════════════════════════════════════
-OVERALL SUMMARY
+CONVERSION SUMMARY → UTF-8
 ══════════════════════════════════════════════════
-Total folders analyzed: 32
-Total CSV files processed: 24236
-Successfully detected: 24190
-Detection success rate: 99.8%
-Total runtime: 41s
+Successfully converted: 30 files
+Already in target encoding: 120 files
 
-Overall Encoding Distribution:
-  UTF-8: 17893 files (73.9%)
-  ISO-8859-1: 3912 files (16.2%)
-  ascii: 2385 files (9.8%)
-  utf-16-le: 46 files (0.2%)
+✅ Analysis complete!
 ```
 
 ---
 
-## 🔒 Privacy
+## 🔒 Safety Features
 
-* **100% offline** — no network calls, telemetry, or uploads
-* **Read-only** — files are never modified
+* **Automatic backups**: Creates `.bak` files before conversion
+* **Dry-run mode**: Preview all changes before applying
+* **Graceful Ctrl+C**: Safe interrupt at any time
+* **Rollback capability**: Instant restoration from backups
+* **Strict error handling**: Won't corrupt files on encoding errors
+
+---
+
+## ⚡ Performance
+
+* **Parallel processing**: Uses half CPU cores by default
+* **Smart job capping**: Prevents system overload
+* **Progress tracking**: Real-time ETA and progress
+* **Optimized I/O**: Minimal disk reads with smart sampling
 
 ---
 
 ## 🐞 Troubleshooting
 
-* **“No encoding detector found”** → `pip3 install chardet` (or `cchardet`)
-* **Slow disks (e.g., `/mnt/…`)** → try `--fast` or reduce `-j`
-* **Ambiguous encodings** → increase `--sample-size 131072` for more context
+| Issue | Solution |
+|-------|----------|
+| "No encoding detector found" | `pip3 install chardet` |
+| Slow on network drives | Use `--fast` mode or reduce `-j` |
+| Low confidence detections | Increase `--sample-size 131072` |
+| Conversion errors | Check source file isn't corrupted |
+| Need to undo conversions | Use `--rollback` |
 
 ---
 

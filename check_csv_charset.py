@@ -25,6 +25,7 @@ Folder structure (dynamic):
 import os
 import sys
 import argparse
+import shutil
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 from collections import defaultdict
@@ -273,6 +274,215 @@ def detect_encoding(file_path: Path,
     except Exception as e:
         return f"error: {str(e)}", 0.0
 
+def convert_file_encoding(file_path: Path,
+                          target_encoding: str,
+                          source_encoding: str,
+                          backup: bool = True) -> Tuple[bool, str]:
+    """
+    Convert a single file from source to target encoding.
+    Returns (success, message).
+    """
+    try:
+        # Skip if already in target encoding
+        if source_encoding.lower() == target_encoding.lower():
+            return True, "already_target"
+
+        # Can't convert unknown encodings
+        if source_encoding in ['unknown', 'binary'] or source_encoding.startswith('error'):
+            return False, f"Cannot convert from {source_encoding}"
+
+        # Read with source encoding
+        with open(file_path, 'r', encoding=source_encoding, errors='strict') as f:
+            content = f.read()
+
+        # Create backup if requested
+        if backup:
+            backup_path = file_path.with_suffix(file_path.suffix + '.bak')
+            shutil.copy2(file_path, backup_path)
+
+        # Write with target encoding
+        with open(file_path, 'w', encoding=target_encoding, errors='strict') as f:
+            f.write(content)
+
+        return True, f"Converted from {source_encoding} to {target_encoding}"
+
+    except UnicodeDecodeError as e:
+        return False, f"Decode error: {str(e)[:50]}"
+    except UnicodeEncodeError as e:
+        return False, f"Encode error: {str(e)[:50]}"
+    except Exception as e:
+        return False, f"Error: {str(e)[:50]}"
+
+
+# 1. Fix the convert_folder_files function to track by_encoding:
+def convert_folder_files(folder_result: Dict,
+                         target_encoding: str,
+                         dry_run: bool = False,
+                         backup: bool = True,
+                         show_progress: bool = True,
+                         verbose: bool = False) -> Dict:
+    """
+    Convert all files in a folder result to target encoding.
+    Returns statistics about the conversion.
+    """
+    stats = {
+        'total': len(folder_result['files']),
+        'converted': 0,
+        'skipped': 0,
+        'failed': 0,
+        'already_target': 0,
+        'failed_files': [],
+        'by_encoding': defaultdict(int)  # ADD THIS!
+    }
+
+    folder_name = folder_result['folder_name']
+
+    # Determine if we should show individual files
+    show_individual = verbose or stats['total'] <= 10
+
+    for i, file_info in enumerate(folder_result['files'], 1):
+        file_path = file_info['path']
+        source_encoding = file_info['encoding']
+
+        if dry_run:
+            # Simulation mode
+            if source_encoding.lower() == target_encoding.lower():
+                stats['already_target'] += 1
+                if show_individual and show_progress:
+                    print(f"  {Colors.DIM}[SKIP]{Colors.NC} {file_path.name} - already {target_encoding}")
+            elif source_encoding in ['unknown', 'binary'] or source_encoding.startswith('error'):
+                stats['skipped'] += 1
+                if show_individual and show_progress:
+                    print(f"  {Colors.YELLOW}[SKIP]{Colors.NC} {file_path.name} - {source_encoding}")
+            else:
+                stats['converted'] += 1
+                stats['by_encoding'][source_encoding] += 1  # TRACK THIS!
+                if show_individual and show_progress:
+                    print(f"  {Colors.GREEN}[WOULD CONVERT]{Colors.NC} {file_path.name}: "
+                          f"{source_encoding} → {target_encoding}")
+        else:
+            # Actual conversion
+            success, message = convert_file_encoding(
+                file_path, target_encoding, source_encoding, backup
+            )
+
+            if success:
+                if message == "already_target":
+                    stats['already_target'] += 1
+                else:
+                    stats['converted'] += 1
+                    stats['by_encoding'][source_encoding] += 1  # TRACK THIS!
+                    if show_individual and show_progress:
+                        print(f"  {Colors.GREEN}✓{Colors.NC} {file_path.name}: "
+                              f"{source_encoding} → {target_encoding}")
+            else:
+                stats['failed'] += 1
+                stats['failed_files'].append((file_path.name, message))
+                if show_individual and show_progress:
+                    print(f"  {Colors.RED}✗{Colors.NC} {file_path.name}: {message}")
+
+        # Show progress counter for large batches
+        if not show_individual and show_progress and i % 100 == 0:
+            print(f"  {Colors.DIM}Processed {i}/{stats['total']} files...{Colors.NC}", end='\r')
+
+    # Clear the progress line
+    if not show_individual and show_progress and stats['total'] > 10:
+        print(" " * 80, end='\r')
+
+    # Show summary for this folder
+    if not show_individual and show_progress and (stats['converted'] > 0 or stats['failed'] > 0):
+        print(f"  {Colors.CYAN}Summary:{Colors.NC}")
+        if dry_run:
+            for enc, count in stats['by_encoding'].items():
+                print(f"    • Would convert {Colors.GREEN}{count}{Colors.NC} files from {enc}")
+        else:
+            for enc, count in stats['by_encoding'].items():
+                print(f"    • Converted {Colors.GREEN}{count}{Colors.NC} files from {enc}")
+
+        if stats['already_target'] > 0:
+            print(f"    • Already {target_encoding}: {Colors.BLUE}{stats['already_target']}{Colors.NC} files")
+        if stats['skipped'] > 0:
+            print(f"    • Skipped (unknown/binary): {Colors.YELLOW}{stats['skipped']}{Colors.NC} files")
+        if stats['failed'] > 0:
+            print(f"    • Failed: {Colors.RED}{stats['failed']}{Colors.NC} files")
+
+    return stats
+
+def display_conversion_summary(all_conversion_stats: List[Tuple[str, Dict]],
+                               target_encoding: str,
+                               dry_run: bool = False):
+    """Display summary of all conversion operations"""
+    total_converted = sum(stats['converted'] for _, stats in all_conversion_stats)
+    total_failed = sum(stats['failed'] for _, stats in all_conversion_stats)
+    total_already = sum(stats['already_target'] for _, stats in all_conversion_stats)
+    total_skipped = sum(stats['skipped'] for _, stats in all_conversion_stats)
+
+    # Aggregate by source encoding
+    encoding_totals = defaultdict(int)
+    for _, stats in all_conversion_stats:
+        for enc, count in stats['by_encoding'].items():
+            encoding_totals[enc] += count
+
+    mode = "DRY RUN" if dry_run else "CONVERSION"
+
+    print(f"\n{Colors.BLUE}{'═' * 50}{Colors.NC}")
+    print(f"{Colors.BOLD}{Colors.CYAN}{mode} SUMMARY → {target_encoding.upper()}{Colors.NC}")
+    print(f"{Colors.BLUE}{'═' * 50}{Colors.NC}")
+
+    # Show what was/would be converted by source encoding
+    if encoding_totals:
+        action = "Would convert" if dry_run else "Converted"
+        print(f"\n{Colors.BOLD}{action} by source encoding:{Colors.NC}")
+        for enc, count in sorted(encoding_totals.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {Colors.GREEN}{enc}{Colors.NC}: {count} files")
+
+    # Summary stats
+    print(f"\n{Colors.BOLD}Totals:{Colors.NC}")
+    if dry_run:
+        print(f"  Would convert: {Colors.GREEN}{total_converted}{Colors.NC} files")
+    else:
+        print(f"  Successfully converted: {Colors.GREEN}{total_converted}{Colors.NC} files")
+
+    if total_already > 0:
+        print(f"  Already in target encoding: {Colors.BLUE}{total_already}{Colors.NC} files")
+
+    if total_skipped > 0:
+        print(f"  Skipped (unknown/binary): {Colors.YELLOW}{total_skipped}{Colors.NC} files")
+
+    if total_failed > 0:
+        print(f"  Failed: {Colors.RED}{total_failed}{Colors.NC} files")
+
+        # Show up to 10 failed files as examples
+        print(f"\n{Colors.YELLOW}Failed conversion examples:{Colors.NC}")
+        shown = 0
+        for folder_name, stats in all_conversion_stats:
+            if shown >= 10:
+                remaining = total_failed - shown
+                if remaining > 0:
+                    print(f"  {Colors.DIM}... and {remaining} more failures{Colors.NC}")
+                break
+            if stats['failed_files']:
+                print(f"  {Colors.CYAN}{folder_name}:{Colors.NC}")
+                for file_name, error in stats['failed_files'][:min(3, 10-shown)]:
+                    print(f"    {Colors.RED}•{Colors.NC} {file_name}: {error}")
+                    shown += 1
+                    if shown >= 10:
+                        break
+
+def rollback_backups(folder_path: Path) -> Tuple[int, int]:
+    """Restore .bak files to original names"""
+    restored = 0
+    failed = 0
+
+    for backup_file in folder_path.rglob('*.csv.bak'):
+        original = backup_file.with_suffix('')  # Remove .bak
+        try:
+            shutil.move(str(backup_file), str(original))
+            restored += 1
+        except Exception:
+            failed += 1
+
+    return restored, failed
 
 def get_folder_display_name(folder_path: Path, delimiters: str = "_- ") -> str:
     """
@@ -646,6 +856,39 @@ Examples:
         default='_- ',
         help='Characters to treat as delimiters for display names (default: "_- ")'
     )
+    parser.add_argument(
+        '--convert-to',
+        choices=['utf-8', 'utf-8-sig', 'ascii', 'iso-8859-1', 'windows-1252'],
+        help='Convert all detected CSV files to target encoding'
+    )
+
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Preview conversion without making changes'
+    )
+
+    parser.add_argument(
+        '--no-backup',
+        action='store_true',
+        help='Skip creating .bak backup files when converting'
+    )
+
+    parser.add_argument(
+        '--convert-filter',
+        help='Only convert files with specific source encoding (e.g., "iso-8859-1")'
+    )
+
+    parser.add_argument(
+        '--rollback',
+        action='store_true',
+        help='Restore all .bak files to original (undo conversions)'
+    )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Show detailed file-by-file conversion progress'
+    )
 
     args = parser.parse_args()
 
@@ -658,6 +901,14 @@ Examples:
     if not directory.is_dir():
         print(f"{Colors.RED}Error: '{directory}' is not a directory{Colors.NC}")
         sys.exit(1)
+
+    if args.rollback:
+        print(f"{Colors.YELLOW}Rolling back .bak files...{Colors.NC}")
+        restored, failed = rollback_backups(directory)
+        print(f"{Colors.GREEN}Restored: {restored} files{Colors.NC}")
+        if failed > 0:
+            print(f"{Colors.RED}Failed: {failed} files{Colors.NC}")
+        sys.exit(0)
 
     # Perform analysis
     print(f"{Colors.BLUE}{'=' * 60}{Colors.NC}")
@@ -705,6 +956,62 @@ Examples:
     # Display summary
     elapsed_time = time.time() - start_time
     display_summary(all_results, elapsed_time)
+
+    # Perform conversion if requested
+    if args.convert_to:
+        print(f"\n{Colors.BLUE}{'─' * 60}{Colors.NC}")
+
+        if args.dry_run:
+            print(f"{Colors.BOLD}{Colors.YELLOW}DRY RUN MODE - No files will be modified{Colors.NC}")
+        else:
+            print(f"{Colors.BOLD}{Colors.CYAN}Starting Encoding Conversion to {args.convert_to}{Colors.NC}")
+            if not args.no_backup:
+                print(f"{Colors.DIM}Creating .bak backups for all converted files{Colors.NC}")
+
+        # Add info about verbose mode
+        if not args.verbose and not args.summary_only:
+            total_to_process = sum(len(r['files']) for r in all_results)
+            if total_to_process > 10:
+                print(f"{Colors.DIM}Processing {total_to_process} files (use --verbose for file-by-file details){Colors.NC}")
+
+        print(f"{Colors.BLUE}{'─' * 60}{Colors.NC}\n")
+
+        conversion_stats = []
+
+        for results in all_results:
+            # Filter files if requested
+            if args.convert_filter:
+                filtered_results = results.copy()
+                filtered_results['files'] = [
+                    f for f in results['files']
+                    if f['encoding'].lower() == args.convert_filter.lower()
+                ]
+                if not filtered_results['files']:
+                    continue
+                results_to_convert = filtered_results
+            else:
+                results_to_convert = results
+
+            # Show folder name with file count
+            file_count = len(results_to_convert['files'])
+            if file_count > 0:
+                print(f"{Colors.CYAN}Converting in {results_to_convert['folder_name']} "
+                      f"({file_count} files)...{Colors.NC}")
+
+            stats = convert_folder_files(
+                results_to_convert,
+                args.convert_to,
+                dry_run=args.dry_run,
+                backup=not args.no_backup,
+                show_progress=not args.summary_only,
+                verbose=args.verbose
+            )
+
+            conversion_stats.append((results_to_convert['folder_name'], stats))
+
+            # Add a separator between folders if not in summary-only mode
+            if not args.summary_only and file_count > 0:
+                print()  # Empty line between folders
 
     print(f"\n{Colors.GREEN}✅ Analysis complete!{Colors.NC}")
 
