@@ -155,4 +155,9 @@ Overall Encoding Distribution:
 
 ## 📝 License
 
-This tool is provided as-is for data analysis purposes.
+Released under the **MIT License**.  
+See **[LICENSE](LICENSE)** for the full text. The software is provided **“as is”**, without warranty of any kind.
+
+**SPDX**: `MIT`  
+**Copyright** © 2025 xmxtxx
+
