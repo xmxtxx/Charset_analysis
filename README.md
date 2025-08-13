@@ -1,7 +1,3 @@
-Here’s the adjusted **README.md** reflecting the new parallel processing, job limit, fast mode, and sampling options:
-
----
-
 # CSV Character Encoding Detection Tool
 
 A Python script for detecting and analyzing character encodings of CSV files across multiple customer folders with **real-time progress tracking** and **parallel processing**.
