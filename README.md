@@ -1,163 +1,158 @@
 # CSV Character Encoding Detection Tool
 
-A Python script for detecting and analyzing character encodings of CSV files across multiple customer folders with **real-time progress tracking** and **parallel processing**.
+Detect and analyze character encodings of CSV files across many folders — **fast**, **parallel**, and **fully offline**. Dynamic folder discovery, half-core default for stability, and graceful **Ctrl+C**.
 
-## 🎯 Purpose
+---
 
-This tool analyzes CSV files stored in a structured folder hierarchy to detect their character encodings. It provides both per-customer and overall encoding distribution statistics, helping identify encoding inconsistencies across large datasets **much faster** thanks to multiprocessing.
+## 🎯 What it does
 
-## 📁 Expected Folder Structure
+* Recursively scans CSV files under each immediate subfolder of a top directory (**no fixed naming required**).
+* Detects encoding (UTF-8/UTF-8-SIG, ASCII, ISO-8859-\*, Windows-125x, plus UTF-16/UTF-32 via BOM and heuristics).
+* Per-folder breakdowns and an overall summary with success rate.
+* **Offline only**: never touches the network; read-only.
+
+---
+
+## 📁 Folder structure (flexible)
 
 ```
-data/
-├── CustomerNR_Customer/
-│   └── bak/
-│       ├── file1.csv
-│       ├── file2.csv
-│       └── ...
-├── CustomerNR_Customer/
-│   └── bak/
-│       └── *.csv files
+top/
+├── AnyFolder1/
+│   └── ... (CSV files can be anywhere if --csv-mode any)
+├── AnyFolder2/
+│   └── <csv_dir>/ (if --csv-mode subdir, e.g., "bak" or "archive")
+│       └── *.csv
 └── ...
 ```
 
-* Top-level directory contains customer folders
-* Customer folders follow the pattern: `CustomerNR_Customer` (e.g., `0000000000000_customer1`)
-* CSV files are located in a `bak` subfolder within each customer folder
+You choose where CSVs live:
 
-## 🚀 Quick Start
+* `--csv-mode any` *(default)*: search `**/*.csv` anywhere under each subfolder
+* `--csv-mode subdir`: only search inside a specific subfolder (set with `--bak`)
 
-### Installation
+---
 
-1. Ensure Python 3.6+ is installed:
-
-```bash
-python3 --version
-```
-
-2. Install the required dependency (fast optional alternative: `cchardet`):
+## 🚀 Quick start
 
 ```bash
+# 1) Install an encoding detector (choose one)
 pip3 install chardet
-# Or faster:
+# or (optional, often faster)
 pip3 install cchardet
-```
 
-### Basic Usage
-
-```bash
-# Analyze current directory
+# 2) Run on current directory (uses half your CPU cores by default)
 python3 check_csv_charset.py
 
-# Analyze specific directory
-python3 check_csv_charset.py /path/to/data
+# 3) Run on a specific top directory (e.g., ~/data)
+python3 check_csv_charset.py ~/data
 
-# Common usage with data folder
-python3 check_csv_charset.py data
+# 4) Only look in a named subfolder under each folder (e.g., "archive")
+python3 check_csv_charset.py /path/to/top --csv-mode subdir --bak archive
 ```
 
-## 📊 Features
+---
 
-* **Real-time Progress Bar**: Shows ETA, elapsed time, and current file
-* **Parallel Processing**: Uses multiple CPU cores for faster detection
-* **Job Limit Safety**: Caps excessive job counts automatically with an info message
-* **Multi-level Analysis**: Per-customer and overall encoding distribution
-* **Color-coded Output**: Easy-to-read terminal output with color indicators
-* **Error Handling**: Gracefully handles read errors and missing files
-* **Confidence Scoring**: Shows detection confidence for each encoding
-* **Performance Optimized**: Intelligent sampling for large files + `--fast` mode for even quicker scans
+## 🧩 Features
 
-## 🛠️ Command Line Options
+* **Dynamic CSV discovery**: `--csv-mode any` (recursive) or `--csv-mode subdir` (e.g., only in `bak`)
+* **Parallel processing**: default **half** your CPU cores (can override with `-j`)
+* **Job safety**: caps extreme `-j` values to avoid thrashing and respects file count
+* **Real-time progress**: progress bar with ETA and elapsed time
+* **Heuristics**: BOM detection (UTF-8/16/32 LE/BE), small UTF-16 no-BOM detection, ASCII/binary hinting
+* **Graceful Ctrl+C**: prints a friendly message and stops cleanly
+* **Display naming**: extract readable names from folder prefixes (configurable delimiters)
 
-| Option                  | Description                                                                      | Example                                                  |
-| ----------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `directory`             | Top-level directory to analyze (default: current)                                | `python3 check_csv_charset.py data`                      |
-| `-s, --summary-only`    | Show only overall summary                                                        | `python3 check_csv_charset.py data -s`                   |
-| `-d, --details`         | Show detailed information per folder                                             | `python3 check_csv_charset.py data -d`                   |
-| `--bak <folder>`        | Specify different backup folder name                                             | `python3 check_csv_charset.py data --bak backup`         |
-| `--no-progress`         | Disable progress bar                                                             | `python3 check_csv_charset.py data --no-progress`        |
-| `--pattern <type>`      | Filter folders (`underscore` or `all`)                                           | `python3 check_csv_charset.py data --pattern all`        |
-| `-j, --jobs <n>`        | Number of parallel workers (default: CPU count, capped at 2×CPU and total files) | `python3 check_csv_charset.py data -j 8`                 |
-| `--fast`                | Faster single-pass detection (less I/O, slightly lower accuracy)                 | `python3 check_csv_charset.py data --fast`               |
-| `--sample-size <bytes>` | Sample size per pass in bytes (default: 65536)                                   | `python3 check_csv_charset.py data --sample-size 131072` |
+---
 
-> **ℹ Note:** If you set `-j` too high (e.g., `-j 100`), the script will automatically cap it to a safe limit and inform you.
+## 🛠️ Options
 
-## 📈 Output Examples
+| Option                       | Description                                                 | Default        |
+| ---------------------------- | ----------------------------------------------------------- | -------------- |
+| `directory`                  | Top directory containing subfolders                         | `.`            |
+| `--csv-mode {any,subdir}`    | Where to look for CSVs                                      | `any`          |
+| `--bak <name>`               | Subfolder name when `--csv-mode subdir`                     | `bak`          |
+| `-j, --jobs <n>`             | Parallel workers; auto-capped for stability                 | **half cores** |
+| `--fast`                     | Single-pass detection (less I/O, slightly lower confidence) | off            |
+| `--sample-size <bytes>`      | Bytes sampled per pass                                      | `65536`        |
+| `--pattern {all,underscore}` | Filter subfolders by name                                   | `all`          |
+| `--name-delims "<chars>"`    | Delimiters for display names; fallback = full name          | `_- `          |
+| `-d, --details`              | Show more info per folder                                   | off            |
+| `-s, --summary-only`         | Only overall summary                                        | off            |
+| `--no-progress`              | Disable progress bar                                        | off            |
 
-### Standard Output
+> **Job safety:** Even if you pass `-j 100`, the tool caps to `min(requested, 2×CPU, total_files)` and prints an info line.
+
+---
+
+## 🧠 Display naming
+
+Folder names like `000123_CustomerA` or `42-CorpX` are shown as `CustomerA` or `CorpX`.
+Customize delimiters with `--name-delims "_- "`. If no delimiter is found, the **full folder name** is used.
+
+---
+
+## ⌨️ Graceful interrupt
+
+Press **Ctrl+C** any time:
+You’ll see a message like **“↩ Ctrl+C detected. Shutting down gracefully…”**, remaining tasks are canceled (best-effort), and the tool exits cleanly.
+
+---
+
+## 📊 Example output
 
 ```
-==============================================================
+============================================================
 CSV Character Encoding Detection
-==============================================================
+============================================================
 📁 Top directory: /home/user/data
-📂 CSV location: */bak/*.csv
-──────────────────────────────────────────────────────────────
+🔎 CSV search: **/*.csv (recursive under each subfolder)
+────────────────────────────────────────────────────────────
 
 Scanning folders...
-Found 245 CSV files in 12 folders
-ℹ Limiting jobs from 100 to 16 (CPU=8, files=245) for stability
+Found 24,236 CSV files in 32 folders
+ℹ Limiting jobs from 32 to 32 (CPU=64, files=24236) for stability
 
-Processing CSV files: [████████████████████████████████████████████████] 245/245 (100.0%) ETA: 0s Elapsed: 41s Complete!
+Processing CSV files: [████████████████████████████████████████████████] 24236/24236 (100.0%) ETA: 0s Elapsed: 41s Complete!
 
-Encoding Distribution customer1:
-  UTF-8: 45 files (75.0%)
-  ISO-8859-1: 15 files (25.0%)
+Encoding Distribution CustomerA:
+  UTF-8: 120 files (80.0%)
+  ISO-8859-1: 30 files (20.0%)
 
-...
+…
 
 ══════════════════════════════════════════════════
 OVERALL SUMMARY
 ══════════════════════════════════════════════════
-Total folders analyzed: 12
-Total CSV files processed: 245
-Successfully detected: 245
-Detection success rate: 100.0%
+Total folders analyzed: 32
+Total CSV files processed: 24236
+Successfully detected: 24190
+Detection success rate: 99.8%
 Total runtime: 41s
 
 Overall Encoding Distribution:
-  UTF-8: 120 files (49.0%)
-  ISO-8859-1: 80 files (32.7%)
-  ascii: 45 files (18.4%)
+  UTF-8: 17893 files (73.9%)
+  ISO-8859-1: 3912 files (16.2%)
+  ascii: 2385 files (9.8%)
+  utf-16-le: 46 files (0.2%)
 ```
-
-### Summary Only Mode (`-s`)
-
-Shows only the overall summary without per-customer details.
-
-### Detailed Mode (`-d`)
-
-Includes additional information like folder paths and total file counts per customer.
-
-## 🎨 Color Coding
-
-* 🟢 **Green**: UTF-8 (recommended encoding)
-* 🔵 **Blue**: ASCII
-* 🟡 **Yellow**: ISO-8859, Windows encodings
-* 🟣 **Magenta**: Other encodings
-* 🔴 **Red**: Errors or detection failures
-
-## 🔒 Security & Privacy
-
-* **100% Local Processing** – No data leaves your computer
-* **No Network Connections**
-* **Read-Only Access** – Only reads files, never modifies them
-
-## 📋 Requirements
-
-* **Python**: 3.6 or higher
-* **Dependencies**: `chardet` or `cchardet`
-* **OS**: Linux (including WSL), macOS, or Windows
-* **Memory**: Scales with file size (typically < 100MB)
-
-## 💡 Tips
-
-1. **Maximum Speed**: Use `-j <cores>` or higher for I/O-heavy datasets, but the script will auto-cap extreme values.
-2. **Fast Mode**: Use `--fast` for large datasets when you just need a rough check.
-3. **Larger Samples**: Use `--sample-size` if your files have encoding markers beyond the default 64KB.
-4. **Automation**: Integrate into data pipelines or scheduled validation tasks.
 
 ---
 
-*For questions or issues, please refer to the inline script documentation or run with `-h` for help.*
+## 🔒 Privacy
+
+* **100% offline** — no network calls, telemetry, or uploads
+* **Read-only** — files are never modified
+
+---
+
+## 🐞 Troubleshooting
+
+* **“No encoding detector found”** → `pip3 install chardet` (or `cchardet`)
+* **Slow disks (e.g., `/mnt/…`)** → try `--fast` or reduce `-j`
+* **Ambiguous encodings** → increase `--sample-size 131072` for more context
+
+---
+
+## 📝 License
+
+This tool is provided as-is for data analysis purposes.
