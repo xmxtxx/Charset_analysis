@@ -187,28 +187,61 @@ def validate_all_files(
         progress.finish()
     return report
 
-
 def print_validation_report(report: Dict, verbose: bool = False) -> None:
-    tot_ok = report['totals'].get('ok', 0)
-    tot_bad = report['totals'].get('bad', 0)
+    """
+    Compact summary like the scanner. By default:
+      - Total OK / Bad / Files
+      - Per-folder: OK, Bad
+    If verbose=True:
+      - Additionally list bad files per folder (limited to a few lines per file).
+    """
+    # hardcoded compact limits (not user-configurable)
+    MAX_ERRORS_PER_FILE = 3
+
+    tot_files = report.get('totals', {}).get('files', 0)
+    tot_ok    = report.get('totals', {}).get('ok', 0)
+    tot_bad   = report.get('totals', {}).get('bad', 0)
+    interrupted = report.get('interrupted', False)
+
     print(f"\n{Colors.BLUE}{'═' * 50}{Colors.NC}")
-    print(f"{Colors.BOLD}{Colors.CYAN}CSV VALIDATION SUMMARY{Colors.NC}")
+    title = "CSV VALIDATION SUMMARY"
+    if interrupted:
+        title += " (partial)"
+    print(f"{Colors.BOLD}{Colors.CYAN}{title}{Colors.NC}")
     print(f"{Colors.BLUE}{'═' * 50}{Colors.NC}")
-    print(f"Files OK: {Colors.GREEN}{tot_ok}{Colors.NC} | Malformed: {Colors.RED}{tot_bad}{Colors.NC}")
-    for folder_name, info in sorted(report['folders'].items()):
-        if info['bad'] == 0 and not verbose:
-            continue
-        print(f"\n{Colors.BOLD}{folder_name}{Colors.NC}: "
-              f"{Colors.GREEN}{info['ok']} ok{Colors.NC}, {Colors.RED}{info['bad']} bad{Colors.NC}")
-        for fname, ok, errors, warnings, stats in sorted(info['files']):
-            if not ok or verbose:
-                status = f"{Colors.GREEN}OK{Colors.NC}" if ok else f"{Colors.RED}BAD{Colors.NC}"
-                delim = stats.get('delimiter')
+
+    print(f"Total files checked: {Colors.BLUE}{tot_files}{Colors.NC}")
+    print(f"Files OK: {Colors.GREEN}{tot_ok}{Colors.NC}")
+    print(f"Malformed: {Colors.RED}{tot_bad}{Colors.NC}")
+
+    # Per-folder counts
+    for folder_name in sorted(report.get('folders', {}).keys()):
+        info = report['folders'][folder_name]
+        ok = info.get('ok', 0)
+        bad = info.get('bad', 0)
+        print(f"{Colors.BOLD}{folder_name}{Colors.NC}: "
+              f"{Colors.GREEN}{ok} ok{Colors.NC}, {Colors.RED}{bad} bad{Colors.NC}")
+
+        if verbose and bad > 0:
+            # List only the bad files
+            for fname, ok_flag, errors, warnings, stats in sorted(info['files']):
+                if ok_flag:
+                    continue
                 rows = stats.get('rows')
                 hc = stats.get('header_cols')
-                print(f"  • {fname}: {status} "
+                delim = stats.get('delimiter')
+                print(f"  • {fname}: {Colors.RED}BAD{Colors.NC} "
                       f"{Colors.DIM}(rows={rows}, header_cols={hc}, delim={delim}){Colors.NC}")
-                for w in warnings:
-                    print(f"    {Colors.YELLOW}⚠{Colors.NC} {w}")
-                for e in errors:
-                    print(f"    {Colors.RED}✗{Colors.NC} {e}")
+                # Show a few key errors
+                if errors:
+                    for e in errors[:MAX_ERRORS_PER_FILE]:
+                        print(f"    {Colors.RED}✗{Colors.NC} {e}")
+                    extra = len(errors) - MAX_ERRORS_PER_FILE
+                    if extra > 0:
+                        print(f"    {Colors.DIM}… {extra} more errors{Colors.NC}")
+                # Warnings (one-line summary)
+                if warnings:
+                    print(f"    {Colors.YELLOW}⚠{Colors.NC} {warnings[0]}")
+                    if len(warnings) > 1:
+                        print(f"    {Colors.DIM}… {len(warnings)-1} more warnings{Colors.NC}")
+
