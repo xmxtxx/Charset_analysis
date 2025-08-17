@@ -506,6 +506,9 @@ def count_total_csv_files(top_directory: Path,
                           csv_mode: str = 'any') -> Tuple[int, List[Path]]:
     """
     Count total CSV files and get list of folders to process.
+    Now supports both structures:
+    1. Classic: parent/subfolders/csv_files
+    2. Direct: csv_folder/csv_files
 
     Returns:
         Tuple of (total_file_count, list_of_folders_with_csv)
@@ -513,7 +516,16 @@ def count_total_csv_files(top_directory: Path,
     total_files = 0
     folders_with_csv = []
 
-    # Get all immediate subdirectories
+    # Check if this directory contains CSV files directly
+    direct_csv_files = list(top_directory.glob('*.csv')) + list(top_directory.glob('*.CSV'))
+    
+    if direct_csv_files:
+        # Direct CSV folder structure - treat the directory itself as the target
+        total_files = len(direct_csv_files)
+        folders_with_csv = [top_directory]
+        return total_files, folders_with_csv
+
+    # Classic subfolder structure - get all immediate subdirectories
     subfolders = [d for d in top_directory.iterdir() if d.is_dir()]
 
     # Optional filter by pattern
@@ -590,9 +602,17 @@ def analyze_all_subfolders(top_directory: Path,
         }
         folder_result_map[subfolder] = res
 
-        if csv_mode == 'any':
+        # Check if this is a direct CSV folder (contains CSV files directly)
+        direct_csv_files = list(subfolder.glob('*.csv')) + list(subfolder.glob('*.CSV'))
+        
+        if direct_csv_files:
+            # Direct CSV folder - use files directly in this folder
+            csv_files = direct_csv_files
+        elif csv_mode == 'any':
+            # Classic subfolder structure - search recursively
             csv_files = list(subfolder.rglob('*.csv')) + list(subfolder.rglob('*.CSV'))
         else:
+            # Specific subfolder mode
             bak_path = subfolder / bak_folder
             csv_files = list(bak_path.glob('*.csv')) + list(bak_path.glob('*.CSV')) if bak_path.exists() else []
 
@@ -910,15 +930,22 @@ Examples:
             print(f"{Colors.RED}Failed: {failed} files{Colors.NC}")
         sys.exit(0)
 
+    # Detect structure type
+    direct_csv_files = list(directory.glob('*.csv')) + list(directory.glob('*.CSV'))
+    structure_type = "direct" if direct_csv_files else "subfolder"
+    
     # Perform analysis
     print(f"{Colors.BLUE}{'=' * 60}{Colors.NC}")
     print(f"{Colors.BOLD}{Colors.CYAN}CSV Character Encoding Detection{Colors.NC}")
     print(f"{Colors.BLUE}{'=' * 60}{Colors.NC}")
     print(f"📁 Top directory: {Colors.GREEN}{directory.absolute()}{Colors.NC}")
-    if args.csv_mode == 'any':
-        print(f"🔎 CSV search: {Colors.GREEN}**/*.csv (recursive under each subfolder){Colors.NC}")
+    
+    if structure_type == "direct":
+        print(f"🔎 Structure: {Colors.GREEN}Direct CSV folder ({len(direct_csv_files)} CSV files found){Colors.NC}")
+    elif args.csv_mode == 'any':
+        print(f"🔎 Structure: {Colors.GREEN}Subfolder mode - **/*.csv (recursive search){Colors.NC}")
     else:
-        print(f"📂 CSV location: {Colors.GREEN}*/{args.bak}/*.csv{Colors.NC}")
+        print(f"📂 Structure: {Colors.GREEN}Specific subfolder mode - */{args.bak}/*.csv{Colors.NC}")
     print(f"{Colors.BLUE}{'─' * 60}{Colors.NC}\n")
 
     # Analyze all subfolders (parallel)
