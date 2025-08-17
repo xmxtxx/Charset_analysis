@@ -1,36 +1,54 @@
 import { NextResponse } from 'next/server'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-import { join } from 'path'
-
-const execAsync = promisify(exec)
 
 export async function POST() {
   try {
-    // Path to the public directory (which contains the samples subfolder)
-    const publicDir = join(process.cwd(), 'public')
+    // For Vercel deployment, use mock demo data since Python isn't available
+    // This simulates the actual analysis output from the Python script
     
-    // Execute Python script on the public directory
-    const pythonScript = join(process.cwd(), 'check_csv_charset.py')
-    const command = `python3 "${pythonScript}" "${publicDir}" --summary-only`
+    // Simulate processing delay
+    await new Promise(resolve => setTimeout(resolve, 1500))
     
-    const { stdout, stderr } = await execAsync(command)
-    
-    if (stderr && !stderr.includes('Warning') && !stderr.includes('ℹ')) {
-      console.error('Python script error:', stderr)
-      return NextResponse.json({ error: 'Demo failed', details: stderr }, { status: 500 })
-    }
+    const mockOutput = `============================================================
+CSV Character Encoding Detection
+============================================================
+📁 Top directory: /samples
+🔎 Structure: Subfolder mode - **/*.csv (recursive search)
+────────────────────────────────────────────────────────────
 
-    // Strip ANSI color codes from output for clean display
-    const cleanOutput = stdout.replace(/\x1b\[[0-9;]*m/g, '')
+Scanning folders...
+Found 3 CSV files in 1 folders
 
-    // Count the number of CSV files in samples
-    const { stdout: fileCount } = await execAsync(`find "${publicDir}" -name "*.csv" | wc -l`)
+Processing CSV files: [██████████████████████████████████████████████████] 3/3 (100.0%)
+
+────────────────────────────────────────────────────────────
+Results by Folder:
+
+Encoding Distribution samples:
+  ISO-8859-1: 1 files (33.3%)
+  ascii: 1 files (33.3%)
+  utf-8: 1 files (33.3%)
+
+
+══════════════════════════════════════════════════
+OVERALL SUMMARY
+══════════════════════════════════════════════════
+Total folders analyzed: 1
+Total CSV files processed: 3
+Successfully detected: 3
+Detection success rate: 100.0%
+Total runtime: 0s
+
+Overall Encoding Distribution:
+  ISO-8859-1: 1 files (33.3%)
+  ascii: 1 files (33.3%)
+  utf-8: 1 files (33.3%)
+
+✅ Analysis complete!`
     
     return NextResponse.json({ 
       success: true,
-      output: cleanOutput,
-      filesProcessed: parseInt(fileCount.trim()) || 3
+      output: mockOutput,
+      filesProcessed: 3
     })
 
   } catch (error) {

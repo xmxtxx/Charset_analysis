@@ -56,7 +56,7 @@ export function DemoSection() {
             </h2>
             <p className="mx-auto max-w-[600px] text-muted-foreground md:text-lg">
               See the Python charset analysis tool in action with sample CSV files. 
-              Real processing, real results - all running locally.
+              This demo simulates the actual analysis output you&apos;ll get when running locally.
             </p>
           </div>
 
@@ -98,12 +98,12 @@ export function DemoSection() {
                   {isRunning ? (
                     <>
                       <Zap className="mr-2 h-4 w-4 animate-pulse" />
-                      Running Python Analysis...
+                      Running Demo Analysis...
                     </>
                   ) : (
                     <>
                       <Play className="mr-2 h-4 w-4" />
-                      Run Demo Analysis
+                      Run Simulated Demo
                     </>
                   )}
                 </Button>
