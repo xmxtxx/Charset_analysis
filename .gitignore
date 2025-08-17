@@ -1,2 +1,117 @@
-/.idea/
-/.venv/
+# ==========================================
+# Next.js + Python Charset Analysis Tool
+# ==========================================
+
+# Next.js dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# Next.js build outputs
+/.next/
+/out/
+/build
+
+# Next.js debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment files
+.env*
+
+# ==========================================
+# Python specific
+# ==========================================
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Python virtual environments
+venv/
+env/
+ENV/
+.env
+.venv
+
+# Python testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# Temporary files (charset analysis)
+# ==========================================
+
+# Temporary CSV processing directories
+/temp/
+*.bak
+*.tmp
+
+# Sample data backups (if any are created during development)
+/public/samples/*.bak
+
+# ==========================================
+# System files
+# ==========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ==========================================
+# IDE files
+# ==========================================
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# VS Code
+.vscode/
+
+# ==========================================
+# Deployment
+# ==========================================
+
+# Vercel
+.vercel
+
+# Deployment certificates
+*.pem
