@@ -14,7 +14,7 @@ export async function GET() {
         'Content-Disposition': 'attachment; filename="run_charset_analyzer.command"',
       },
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'macOS launcher not found' }, { status: 404 })
   }
 }

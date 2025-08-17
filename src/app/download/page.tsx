@@ -436,8 +436,8 @@ export default function DownloadPage() {
                     <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded">
                       <p className="font-medium text-blue-700 dark:text-blue-400">🍎 macOS:</p>
                       <ul className="list-disc ml-5 space-y-1 text-gray-700 dark:text-gray-300">
-                        <li>Right-click the .command file → "Open" (don't double-click first time)</li>
-                        <li>Click "Open" when prompted about unidentified developer</li>
+                        <li>Right-click the .command file → &ldquo;Open&rdquo; (don&apos;t double-click first time)</li>
+                        <li>Click &ldquo;Open&rdquo; when prompted about unidentified developer</li>
                         <li>May need: System Preferences → Security & Privacy → Allow anyway</li>
                         <li>Terminal permissions may be required</li>
                       </ul>
@@ -447,9 +447,9 @@ export default function DownloadPage() {
                       <p className="font-medium text-green-700 dark:text-green-400">🪟 Windows:</p>
                       <ul className="list-disc ml-5 space-y-1 text-gray-700 dark:text-gray-300">
                         <li>Windows Defender may block execution initially</li>
-                        <li>Click "More info" → "Run anyway" if SmartScreen appears</li>
+                        <li>Click &ldquo;More info&rdquo; → &ldquo;Run anyway&rdquo; if SmartScreen appears</li>
                         <li>Add to Windows Defender exclusions if needed</li>
-                        <li>UAC prompt may appear - click "Yes" to allow</li>
+                        <li>UAC prompt may appear - click &ldquo;Yes&rdquo; to allow</li>
                       </ul>
                     </div>
                     
@@ -470,7 +470,7 @@ export default function DownloadPage() {
                 <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <p className="font-medium">NO WARRANTY OR LIABILITY:</p>
                   <ul className="list-disc ml-5 space-y-1">
-                    <li>This software is provided "AS IS" without warranty of any kind</li>
+                    <li>This software is provided &ldquo;AS IS&rdquo; without warranty of any kind</li>
                     <li>No liability is accepted for any damage, data loss, or security issues</li>
                     <li>Use at your own risk and responsibility</li>
                     <li>Always backup your data before running any conversion operations</li>
@@ -547,7 +547,7 @@ export default function DownloadPage() {
                   <div>
                     <h4 className="font-semibold text-gray-900 dark:text-gray-100">NO WARRANTY OR LIABILITY</h4>
                     <ul className="list-disc ml-5 space-y-1">
-                      <li>This software is provided "AS IS" without warranty of any kind</li>
+                      <li>This software is provided &ldquo;AS IS&rdquo; without warranty of any kind</li>
                       <li>No liability is accepted for any damage, data loss, or security issues</li>
                       <li>Use at your own risk and responsibility</li>
                       <li>Always backup your data before running any operations</li>
@@ -601,7 +601,7 @@ export default function DownloadPage() {
               </div>
 
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 text-center">
-                By clicking "I Accept & Download", you confirm that you have read, understood, and agree to these terms.
+                By clicking &ldquo;I Accept &amp; Download&rdquo;, you confirm that you have read, understood, and agree to these terms.
               </p>
             </div>
           </div>

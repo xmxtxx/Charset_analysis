@@ -14,7 +14,7 @@ export async function GET() {
         'Content-Disposition': 'attachment; filename="check_csv_charset.py"',
       },
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 }

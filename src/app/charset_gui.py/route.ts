@@ -14,7 +14,7 @@ export async function GET() {
         'Content-Disposition': 'attachment; filename="charset_web_gui.py"',
       },
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'GUI script not found' }, { status: 404 })
   }
 }

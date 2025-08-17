@@ -33,7 +33,7 @@ export function DemoSection() {
       
       const data: DemoResult = await response.json()
       setResult(data)
-    } catch (error) {
+    } catch {
       setResult({
         success: false,
         output: '',

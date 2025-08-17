@@ -4,7 +4,7 @@ import { Header } from "@/components/header"
 import { DemoSection } from "@/components/demo-section"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText, Zap, Shield, BarChart, Upload, Download } from "lucide-react"
+import { FileText, Zap, Shield, BarChart, Download } from "lucide-react"
 
 export default function Home() {
   return (

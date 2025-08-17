@@ -14,7 +14,7 @@ export async function GET() {
         'Content-Disposition': 'attachment; filename="run_charset_analyzer.sh"',
       },
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Linux launcher not found' }, { status: 404 })
   }
 }
