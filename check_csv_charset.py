@@ -739,18 +739,29 @@ def display_encoding_distribution(results: Dict, show_details: bool = False):
         print(f"  {Colors.BLUE}Folder path{Colors.NC}: {results['folder_path']}")
 
 
-def display_summary(all_results: List[Dict], elapsed_time: float):
+def display_summary(all_results: List[Dict], elapsed_time: float, interactive: bool = False):
     """Display overall summary of all folders analyzed"""
     total_folders = len(all_results)
     total_files = sum(r['total'] for r in all_results)
     total_detected = sum(r['detected'] for r in all_results)
     total_errors = sum(r['errors'] for r in all_results)
 
-    # Aggregate all encodings
+    # Aggregate all encodings and build file mapping
     all_encodings = defaultdict(int)
+    encoding_to_files = defaultdict(list)
+    
     for results in all_results:
-        for encoding, count in results['encodings'].items():
-            all_encodings[encoding] += count
+        for file_info in results['files']:
+            encoding = file_info['encoding']
+            file_path = file_info['path']
+            confidence = file_info['confidence']
+            
+            all_encodings[encoding] += 1
+            encoding_to_files[encoding].append({
+                'path': str(file_path),  # Convert Path object to string
+                'confidence': confidence,
+                'folder': results['folder_name']
+            })
 
     print(f"\n{Colors.BLUE}{'═' * 50}{Colors.NC}")
     print(f"{Colors.BOLD}{Colors.CYAN}OVERALL SUMMARY{Colors.NC}")
@@ -771,7 +782,9 @@ def display_summary(all_results: List[Dict], elapsed_time: float):
     if all_encodings:
         print(f"\n{Colors.BOLD}{Colors.CYAN}Overall Encoding Distribution:{Colors.NC}")
         sorted_encodings = sorted(all_encodings.items(), key=lambda x: x[1], reverse=True)
-        for encoding, count in sorted_encodings:
+        encoding_numbers = {}  # Map numbers to encodings for easy selection
+        
+        for i, (encoding, count) in enumerate(sorted_encodings, 1):
             percentage = (count / total_detected) * 100 if total_detected > 0 else 0
             if encoding and encoding.lower() in ['utf-8', 'utf8', 'utf-8-sig']:
                 enc_color = Colors.GREEN
@@ -783,7 +796,113 @@ def display_summary(all_results: List[Dict], elapsed_time: float):
                 enc_color = Colors.RED
             else:
                 enc_color = Colors.MAGENTA
-            print(f"  {enc_color}{encoding}{Colors.NC}: {count} files ({percentage:.1f}%)")
+            
+            encoding_numbers[i] = encoding
+            print(f"  [{Colors.BOLD}{i}{Colors.NC}] {enc_color}{encoding}{Colors.NC}: {count} files ({percentage:.1f}%)")
+        
+        # Add interactive file listing functionality
+        if interactive:
+            return offer_encoding_exploration(encoding_numbers, encoding_to_files)
+    
+    return True
+
+
+def offer_encoding_exploration(encoding_numbers: Dict[int, str], encoding_to_files: Dict[str, List[Dict]]):
+    """Interactive exploration of files by encoding"""
+    try:
+        print(f"\n{Colors.CYAN}💡 Interactive File Explorer:{Colors.NC}")
+        print(f"Enter a number [1-{len(encoding_numbers)}] to see all files with that encoding")
+        print(f"Type '{Colors.BOLD}all{Colors.NC}' to see all files grouped by encoding")
+        print(f"Type '{Colors.BOLD}q{Colors.NC}' to quit")
+        
+        while True:
+            try:
+                user_input = input(f"\n{Colors.YELLOW}🔍 Enter choice: {Colors.NC}").strip().lower()
+                
+                if user_input in ['q', 'quit', 'exit']:
+                    print(f"{Colors.GREEN}👋 Goodbye!{Colors.NC}")
+                    break
+                
+                if user_input == 'all':
+                    display_all_files_by_encoding(encoding_to_files)
+                    continue
+                
+                try:
+                    choice = int(user_input)
+                    if choice in encoding_numbers:
+                        encoding = encoding_numbers[choice]
+                        display_files_for_encoding(encoding, encoding_to_files[encoding])
+                    else:
+                        print(f"{Colors.RED}❌ Invalid choice. Please enter a number between 1 and {len(encoding_numbers)}{Colors.NC}")
+                except ValueError:
+                    print(f"{Colors.RED}❌ Invalid input. Please enter a number, 'all', or 'q'{Colors.NC}")
+                    
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Colors.GREEN}👋 Goodbye!{Colors.NC}")
+                break
+                
+    except Exception as e:
+        print(f"{Colors.RED}❌ Error in interactive mode: {e}{Colors.NC}")
+    
+    return True
+
+
+def display_files_for_encoding(encoding: str, files: List[Dict]):
+    """Display all files that have a specific encoding"""
+    if not files:
+        print(f"{Colors.YELLOW}No files found for encoding: {encoding}{Colors.NC}")
+        return
+    
+    # Color encoding name
+    if encoding and encoding.lower() in ['utf-8', 'utf8', 'utf-8-sig']:
+        enc_color = Colors.GREEN
+    elif encoding and encoding.lower() in ['ascii']:
+        enc_color = Colors.BLUE
+    elif encoding and ('iso' in encoding.lower() or 'windows' in encoding.lower()):
+        enc_color = Colors.YELLOW
+    elif encoding and encoding.lower() in ['binary', 'utf-16-le', 'utf-16-be', 'utf-32-le', 'utf-32-be']:
+        enc_color = Colors.RED
+    else:
+        enc_color = Colors.MAGENTA
+    
+    print(f"\n{Colors.BLUE}{'─' * 60}{Colors.NC}")
+    print(f"{Colors.BOLD}📋 Files with encoding: {enc_color}{encoding}{Colors.NC}")
+    print(f"{Colors.BLUE}{'─' * 60}{Colors.NC}")
+    
+    # Group by folder for better organization
+    files_by_folder = defaultdict(list)
+    for file_info in files:
+        files_by_folder[file_info['folder']].append(file_info)
+    
+    for folder_name in sorted(files_by_folder.keys()):
+        folder_files = files_by_folder[folder_name]
+        if len(files_by_folder) > 1:  # Only show folder name if multiple folders
+            print(f"\n{Colors.CYAN}📁 Folder: {folder_name}{Colors.NC}")
+        
+        for file_info in sorted(folder_files, key=lambda x: x['path']):
+            confidence = file_info['confidence']
+            confidence_color = Colors.GREEN if confidence > 0.8 else Colors.YELLOW if confidence > 0.5 else Colors.RED
+            
+            # Extract just the filename for cleaner display
+            file_path = Path(file_info['path'])
+            filename = file_path.name
+            
+            print(f"  📄 {Colors.BOLD}{filename}{Colors.NC}")
+            print(f"     {Colors.BLUE}Path:{Colors.NC} {file_info['path']}")
+            print(f"     {Colors.BLUE}Confidence:{Colors.NC} {confidence_color}{confidence:.2f}{Colors.NC}")
+
+
+def display_all_files_by_encoding(encoding_to_files: Dict[str, List[Dict]]):
+    """Display all files grouped by encoding"""
+    print(f"\n{Colors.BLUE}{'═' * 70}{Colors.NC}")
+    print(f"{Colors.BOLD}{Colors.CYAN}📋 ALL FILES BY ENCODING{Colors.NC}")
+    print(f"{Colors.BLUE}{'═' * 70}{Colors.NC}")
+    
+    # Sort encodings by file count (most common first)
+    sorted_encodings = sorted(encoding_to_files.items(), key=lambda x: len(x[1]), reverse=True)
+    
+    for encoding, files in sorted_encodings:
+        display_files_for_encoding(encoding, files)
 
 
 def main():
@@ -803,6 +922,7 @@ Examples:
   %(prog)s data
   %(prog)s /path/to/top --csv-mode subdir --bak archive
   %(prog)s data -j 8 --fast
+  %(prog)s data --interactive  # Enable file explorer to browse by encoding
         """
     )
 
@@ -909,6 +1029,12 @@ Examples:
         action='store_true',
         help='Show detailed file-by-file conversion progress'
     )
+    
+    parser.add_argument(
+        '--interactive',
+        action='store_true',
+        help='Enable interactive file explorer to browse files by encoding'
+    )
 
     args = parser.parse_args()
 
@@ -982,7 +1108,7 @@ Examples:
 
     # Display summary
     elapsed_time = time.time() - start_time
-    display_summary(all_results, elapsed_time)
+    display_summary(all_results, elapsed_time, args.interactive)
 
     # Perform conversion if requested
     if args.convert_to:

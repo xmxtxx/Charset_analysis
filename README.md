@@ -17,6 +17,13 @@ Detect, analyze, and **convert** character encodings of CSV files across many fo
 
 ## ✨ New Features
 
+### 🔍 **Interactive File Explorer**
+Browse and explore files by encoding after analysis:
+- View all files with a specific encoding (e.g., find all EUC-JP files)
+- See confidence levels and full paths
+- Navigate with simple number selections
+- Perfect for finding files that need conversion
+
 ### 🔄 **Encoding Conversion**
 Convert your CSV files to a standard encoding with safety features:
 - Automatic `.bak` backup creation
@@ -63,6 +70,9 @@ python3 check_csv_charset.py
 # Detect in specific directory
 python3 check_csv_charset.py ~/data
 
+# Interactive mode - explore files by encoding
+python3 check_csv_charset.py ~/data --interactive
+
 # Convert all files to UTF-8 (with preview)
 python3 check_csv_charset.py ~/data --convert-to utf-8 --dry-run
 
@@ -92,6 +102,7 @@ python3 check_csv_charset.py ~/data --rollback
 |--------|-------------|
 | `-d, --details` | Show detailed folder information |
 | `-s, --summary-only` | Only show overall summary |
+| `--interactive` | Enable file explorer to browse files by encoding |
 | `--no-progress` | Disable progress bar |
 | `--pattern {all,underscore}` | Filter folders by name pattern |
 | `--name-delims "<chars>"` | Characters for display name extraction |
